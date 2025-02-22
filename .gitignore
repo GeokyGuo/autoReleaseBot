@@ -1,0 +1,4 @@
+/.idea/*
+/chromedriver-win64/*
+*.json
+*.ini
