@@ -13,18 +13,20 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+
 # 初始化日志配置
-setup_logger('CSDN自动化发布', 'csdn_blog_publish.log')
+setup_logger('掘金自动化', 'juejin_automation.log')
 
 # 判断是否登录成功
 def is_login_successful(driver):
     try:
         # 显式等待用户头像元素出现，判断登录成功
         WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, '//a[@class="hasAvatar"]'))
+            EC.presence_of_element_located((By.XPATH, '//img[@class="lazy avatar-img immediate"]'))
         )
         return True
     except Exception:
+        logging.warning("未检测到用户头像，登录可能失败")
         return False
 
 
@@ -36,27 +38,27 @@ def loop_until_y_case_sensitive():
             break
 
 
-def js_click_and_wait(driver, target_button, wait_time=1):
-    driver.execute_script("arguments[0].click();", target_button)
+def click_and_wait(element, wait_time=1):
+    element.click()
     time.sleep(wait_time)
 
 
-def save_cookies(driver, file_path='csdn_cookies.json'):
+def save_cookies(driver, file_path='juejin_cookies.json'):
     # 保存登录后的 Cookies，以覆盖模式写入文件（即先清空原内容再写入）
     cookies = driver.get_cookies()
     with open(file_path, 'w') as f:
         json.dump(cookies, f)
-    logging.info(f"已保存 Cookies 到 {file_path}")
+    logging.info(f"已将Cookies保存到 {file_path}")
 
 
-def delete_cookies_file(file_path='csdn_cookies.json'):
+def delete_cookies_file(file_path='juejin_cookies.json'):
     if os.path.exists(file_path):
         # 获取文件的目录和文件名
         dir_name, file_name = os.path.split(file_path)
         # 生成新的文件名，添加 _bak 后缀
         new_file_name = os.path.splitext(file_name)[0] + '_bak' + os.path.splitext(file_name)[1]
         # 生成新的文件路径
-        new_file_path = os.path.join(dir_name, new_file_name)
+        new_file_path = os.path.join(dir_name, new_file_path)
         # 重命名文件
         os.rename(file_path, new_file_path)
         logging.info(f"文件 {file_path} 已重命名为 {new_file_path}")
@@ -70,21 +72,26 @@ def manual_login(driver):
     username_str = config.get('Credentials', 'username')
     password_str = config.get('Credentials', 'password')
 
-    driver.get('https://passport.csdn.net/login')
+    driver.get('https://juejin.cn/')
     time.sleep(3)
 
-    # 定位并点击“账号密码登录”按钮
-    login_tab_btn = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//span[text()="密码登录"]'))
+    # 显式等待按钮可点击，最多等待 10 秒
+    button = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.login-button'))
     )
-    js_click_and_wait(driver, login_tab_btn)
+    click_and_wait(button)
+
+    password_login_span = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.XPATH, '//span[@class="clickable" and contains(text(), "密码登录")]'))
+    )
+    click_and_wait(password_login_span)
 
     # 等待账号和密码输入框出现
     username_input = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, '//input[@placeholder="手机号/邮箱/用户名"]'))
+        EC.presence_of_element_located((By.CSS_SELECTOR, 'input.account-input'))
     )
     password_input = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, '//input[@placeholder="密码"]'))
+        EC.presence_of_element_located((By.CSS_SELECTOR, 'input.login-password'))
     )
 
     # 输入账号和密码
@@ -93,16 +100,16 @@ def manual_login(driver):
 
     # 显式等待登录按钮可点击
     login_btn = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//button[@class="base-button" and text()="登录"]'))
+        EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.btn.btn-login'))
     )
-    js_click_and_wait(driver, login_btn)
+    click_and_wait(login_btn)
 
     # 登录卡点，等待输入 y 继续
     loop_until_y_case_sensitive()
 
     if is_login_successful(driver):
         save_cookies(driver)
-        logging.info("手动登录成功！")
+        logging.info("手动登录成功，已保存Cookies")
         return True
     logging.error("手动登录失败，请检查账号密码或网络。")
     return False
@@ -111,9 +118,9 @@ def manual_login(driver):
 # 使用 Cookies 登录函数
 def cookies_login(driver):
     try:
-        with open('csdn_cookies.json', 'r') as f:
+        with open('juejin_cookies.json', 'r') as f:
             cookies = json.load(f)
-            driver.get('https://www.csdn.net/')
+            driver.get('https://juejin.cn/')
             time.sleep(3)
             # 添加 cookie
             for cookie in cookies:
@@ -122,74 +129,73 @@ def cookies_login(driver):
             time.sleep(3)
 
             if is_login_successful(driver):
-                logging.info("使用 Cookies 登录成功！")
+                logging.info("使用Cookies登录成功！")
                 return True
             else:
-                logging.warning("Cookies 已过期或无效，进行手动登录。")
+                logging.warning("Cookies已过期或无效，将进行手动登录。")
                 return False
     except Exception as e:
         delete_cookies_file()
-        logging.error(f"登录时出现异常: {e}，已删除 csdn_cookies.json 文件。")
+        logging.error(f"登录时出现异常: {e}，已删除 juejin_cookies.json 文件。")
         return False
 
 
 # 检查是否存在 cookie 文件且文件有内容
 def cookie_file_exists():
-    file_path = 'csdn_cookies.json'
-    return os.path.exists(file_path) and os.path.getsize(file_path) > 0
+    file_path = 'juejin_cookies.json'
+    result = os.path.exists(file_path) and os.path.getsize(file_path) > 0
+    return result
 
 
 def set_article_title(driver, title):
     # 显式等待标题输入框出现
     title_input = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, '//textarea[@id="txtTitle"]'))
+        EC.presence_of_element_located((By.XPATH, '//input[contains(@placeholder, "文章标题")]'))
     )
     title_input.send_keys(title)
-    logging.info(f"已设置文章标题为: {title}")
 
 
 def set_article_content(driver, content):
-    # 显式等待 iframe 加载完成，最长等待 10 秒
-    iframe = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, 'iframe.cke_wysiwyg_frame.cke_reset'))
-    )
-    # 切换到 iframe 内部
-    driver.switch_to.frame(iframe)
-    time.sleep(2)
-    # 显式等待可编辑的 body 元素加载完成，最长等待 10 秒
+    # 显式等待内容输入框出现
     content_input = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, '//body[@contenteditable="true"]'))
+        EC.presence_of_element_located((By.CSS_SELECTOR, 'div.bytemd-editor'))
     )
-    # 清空原有内容（可选）
-    driver.execute_script("arguments[0].innerHTML = '';", content_input)
-    # 向可编辑的 body 元素发送文章内容
-    content_input.send_keys(content)
-    # 从 iframe 回到主文档
-    driver.switch_to.default_content()
-    logging.info("已设置文章内容")
+
+    # 执行 JavaScript 代码来设置编辑器的内容
+    driver.execute_script("""
+        var editor = arguments[0];
+        var cm = editor.querySelector('.CodeMirror').CodeMirror;
+        cm.setValue(arguments[1]);
+    """, content_input, content)
 
 
 def select_tags(driver):
-    # 显式等待按钮可点击，最长等待 10 秒
+    # 显式等待标签输入框出现
     button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.tag__btn-tag.active'))
+        EC.element_to_be_clickable((By.XPATH, '//button[@class="xitu-btn" and contains(text(), "发布")]'))
     )
     # 点击按钮
-    js_click_and_wait(driver, button)
-    # 显式等待元素可点击
-    tag_element1 = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//*[@id="pane-0"]/span[1]'))
-    )
-    # 点击标签元素
-    js_click_and_wait(driver, tag_element1)
-    # 显式等待元素可点击
-    tag_element2 = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//*[@id="pane-0"]/span[2]'))
-    )
-    # 点击标签元素
-    js_click_and_wait(driver, tag_element2)
-    logging.info("已选择文章标签")
+    click_and_wait(button)
 
+    # 显式等待标签输入框出现
+    tag1 = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.XPATH, '//div[@class="item" and contains(text(), "阅读")]'))
+    )
+    # 点击按钮
+    click_and_wait(tag1)
+
+    # 显式等待下拉框出现并可点击，最长等待 10 秒
+    dropdown = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.CSS_SELECTOR, 'div.select-plus.byte-select.byte-select--normal'))
+    )
+    # 点击下拉框展开选项列表
+    click_and_wait(dropdown)
+
+    tag2 = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.XPATH, '//li[@classname="tag-option" and contains(text(), "面试")]'))
+    )
+    # 点击 “后端标签” 选项
+    click_and_wait(tag2)
 
 def upload_cover_image(driver):
     current_date = datetime.now().strftime("%m%d")
@@ -200,14 +206,13 @@ def upload_cover_image(driver):
     if os.path.exists(file_path):
         # 显式等待文件输入框出现
         file_input = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'input.el-upload__input[type="file"]'))
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="file"][style="display: none;"]'))
         )
         # 上传图片
         file_input.send_keys(file_path)
-        # 显式等待元素出现在 DOM 树中，最多等待 10 秒
+        # 显式等待图片上传完成，这里需要根据实际情况调整等待条件
         WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located(
-                (By.XPATH, '//img[@class="preview" and contains(@src, "i-blog.csdnimg.cn")]'))
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'img.preview-image'))
         )
         logging.info(f"成功上传图片: {file_path}")
     else:
@@ -218,33 +223,28 @@ def upload_cover_image(driver):
 # 发布文章函数
 def publish_article(driver, title, content):
     # 打开创作中心
-    creator_center_url = 'https://mp.csdn.net/'
+    creator_center_url = 'https://juejin.cn/editor/drafts/new?v=2'
     driver.get(creator_center_url)
-
-    # 显式等待发布按钮可点击
-    publish_btn = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//a[@class="content" and contains(text(), "发布")]'))
-    )
-    js_click_and_wait(driver, publish_btn)
 
     set_article_title(driver, title)
     time.sleep(1)
     set_article_content(driver, content)
     time.sleep(1)
     select_tags(driver)
+    time.sleep(1)
     upload_cover_image(driver)
     time.sleep(1)
 
     # 显式等待发布按钮可点击
     publish_btn = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//button[contains(@class, "el-button") and span[text()=" 发布博客"]]'))
+        EC.element_to_be_clickable((By.XPATH, '//button[contains(text(), "确定并发布")]'))
     )
-    js_click_and_wait(driver, publish_btn)
-    time.sleep(3)
+    click_and_wait(publish_btn)
+    time.sleep(2)
 
-    # 显式等待包含“发布成功”的元素出现，最长等待 10 秒
+    # 等待发布成功
     WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, '//div[@class="content-title" and contains(text(), "发布成功")]'))
+        EC.presence_of_element_located((By.XPATH, '//div[@class="thanks" and contains(text(), "发布成功")]'))
     )
     logging.info("文章发布成功！")
 
@@ -287,7 +287,6 @@ def read_article_from_file():
     # 去除内容末尾多余的换行符
     article_content = article_content.rstrip()
 
-    logging.info(f"从文件 {file_path} 中读取文章标题和内容成功")
     return article_title, article_content
 
 
@@ -309,16 +308,16 @@ def main():
         logging.info("没有有效的保存的 Cookies，进行手动登录。")
         manual_login(driver)
 
-    time.sleep(5)
+    time.sleep(3)
 
     # 读取文章
     article_title, article_content = read_article_from_file()
 
-    # 发布文章
     publish_article(driver, article_title, article_content)
 
     # 关闭浏览器
     driver.quit()
+    logging.info("关闭Chrome浏览器")
 
 
 if __name__ == "__main__":
