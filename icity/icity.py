@@ -13,18 +13,21 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+
 # 初始化日志配置
-setup_logger('CSDN自动化发布', 'csdn_blog_publish.log')
+setup_logger('icity自动化', 'icity_automation.log')
 
 # 判断是否登录成功
 def is_login_successful(driver):
     try:
-        # 显式等待用户头像元素出现，判断登录成功
+        # 这里需要根据icity.ly登录成功后的页面特征来确定定位元素，假设是一个特定的用户信息元素
         WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, '//a[@class="hasAvatar"]'))
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'img.avatar'))
         )
+        logging.info("检测到登录成功标识，登录成功")
         return True
     except Exception:
+        logging.warning("未检测到登录成功标识，登录可能失败")
         return False
 
 
@@ -41,15 +44,14 @@ def js_click_and_wait(driver, target_button, wait_time=1):
     time.sleep(wait_time)
 
 
-def save_cookies(driver, file_path='csdn_cookies.json'):
-    # 保存登录后的 Cookies，以覆盖模式写入文件（即先清空原内容再写入）
+def save_cookies(driver, file_path='icity_cookies.json'):
     cookies = driver.get_cookies()
     with open(file_path, 'w') as f:
         json.dump(cookies, f)
-    logging.info(f"已保存 Cookies 到 {file_path}")
+    logging.info(f"已将Cookies保存到 {file_path}")
 
 
-def delete_cookies_file(file_path='csdn_cookies.json'):
+def delete_cookies_file(file_path='icity_cookies.json'):
     if os.path.exists(file_path):
         # 获取文件的目录和文件名
         dir_name, file_name = os.path.split(file_path)
@@ -64,189 +66,159 @@ def delete_cookies_file(file_path='csdn_cookies.json'):
 
 # 手动登录函数
 def manual_login(driver):
-    # 读取配置文件
     config = configparser.ConfigParser()
     config.read('config.ini')
     username_str = config.get('Credentials', 'username')
     password_str = config.get('Credentials', 'password')
 
-    driver.get('https://passport.csdn.net/login')
+    driver.get('https://icity.ly/welcome')
     time.sleep(3)
-
-    # 定位并点击“账号密码登录”按钮
-    login_tab_btn = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//span[text()="密码登录"]'))
-    )
-    js_click_and_wait(driver, login_tab_btn)
 
     # 等待账号和密码输入框出现
     username_input = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, '//input[@placeholder="手机号/邮箱/用户名"]'))
+        EC.presence_of_element_located((By.ID, 'icty_user_login'))
     )
     password_input = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, '//input[@placeholder="密码"]'))
+        EC.presence_of_element_located((By.ID, 'icty_user_password'))
     )
-
     # 输入账号和密码
     username_input.send_keys(username_str)
     password_input.send_keys(password_str)
 
+    # 定位并选中“记住我”复选框
+    remember_me_checkbox = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.ID, 'icty_user_remember_me'))
+    )
+    js_click_and_wait(driver, remember_me_checkbox)
+
     # 显式等待登录按钮可点击
     login_btn = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//button[@class="base-button" and text()="登录"]'))
+        EC.element_to_be_clickable((By.CSS_SELECTOR, 'input[type="submit"][value="登入"]'))
     )
     js_click_and_wait(driver, login_btn)
 
-    # 登录卡点，等待输入 y 继续
+    # 登录卡点，等待输入y继续
     loop_until_y_case_sensitive()
 
     if is_login_successful(driver):
         save_cookies(driver)
-        logging.info("手动登录成功！")
+        logging.info("手动登录成功，已保存Cookies")
         return True
     logging.error("手动登录失败，请检查账号密码或网络。")
     return False
 
 
-# 使用 Cookies 登录函数
+# 使用Cookies登录函数
 def cookies_login(driver):
     try:
-        with open('csdn_cookies.json', 'r') as f:
+        with open('icity_cookies.json', 'r') as f:
             cookies = json.load(f)
-            driver.get('https://www.csdn.net/')
+            driver.get('https://icity.ly/')
             time.sleep(3)
-            # 添加 cookie
             for cookie in cookies:
                 driver.add_cookie(cookie)
             driver.refresh()
             time.sleep(3)
 
             if is_login_successful(driver):
-                logging.info("使用 Cookies 登录成功！")
+                logging.info("使用Cookies登录成功！")
                 return True
             else:
-                logging.warning("Cookies 已过期或无效，进行手动登录。")
+                logging.warning("Cookies已过期或无效，将进行手动登录。")
                 return False
     except Exception as e:
         delete_cookies_file()
-        logging.error(f"登录时出现异常: {e}，已删除 csdn_cookies.json 文件。")
+        logging.error(f"登录时出现异常: {e}，已删除 icity_cookies.json 文件。")
         return False
 
 
-# 检查是否存在 cookie 文件且文件有内容
+# 检查是否存在cookie文件且文件有内容
 def cookie_file_exists():
-    file_path = 'csdn_cookies.json'
-    return os.path.exists(file_path) and os.path.getsize(file_path) > 0
+    file_path = 'icity_cookies.json'
+    result = os.path.exists(file_path) and os.path.getsize(file_path) > 0
+    return result
 
 
-def set_article_title(driver, title):
-    # 显式等待标题输入框出现
+# 假设icity.ly发布内容时设置标题的函数
+def set_icity_title(driver, title):
     title_input = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, '//textarea[@id="txtTitle"]'))
+        EC.presence_of_element_located((By.XPATH, '//input[@class="title" and contains(@placeholder, "标题")]'))
     )
     title_input.send_keys(title)
     logging.info(f"已设置文章标题为: {title}")
 
 
-def set_article_content(driver, content):
-    # 显式等待 iframe 加载完成，最长等待 10 秒
-    iframe = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, 'iframe.cke_wysiwyg_frame.cke_reset'))
-    )
-    # 切换到 iframe 内部
-    driver.switch_to.frame(iframe)
-    time.sleep(2)
-    # 显式等待可编辑的 body 元素加载完成，最长等待 10 秒
+# 假设icity.ly发布内容时设置内容的函数
+def set_icity_content(driver, content):
     content_input = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, '//body[@contenteditable="true"]'))
+        EC.presence_of_element_located((By.XPATH, '//textarea[@class="content" and @placeholder="说点什么"]'))
     )
-    # 清空原有内容（可选）
-    driver.execute_script("arguments[0].innerHTML = '';", content_input)
-    # 向可编辑的 body 元素发送文章内容
     content_input.send_keys(content)
-    # 从 iframe 回到主文档
-    driver.switch_to.default_content()
     logging.info("已设置文章内容")
 
 
-def select_tags(driver):
-    # 显式等待按钮可点击，最长等待 10 秒
-    button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.tag__btn-tag.active'))
-    )
-    # 点击按钮
-    js_click_and_wait(driver, button)
-    # 显式等待元素可点击
-    tag_element1 = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//*[@id="pane-0"]/span[1]'))
-    )
-    # 点击标签元素
-    js_click_and_wait(driver, tag_element1)
-    # 显式等待元素可点击
-    tag_element2 = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//*[@id="pane-0"]/span[2]'))
-    )
-    # 点击标签元素
-    js_click_and_wait(driver, tag_element2)
-    logging.info("已选择文章标签")
-
-
-def upload_cover_image(driver):
+# 假设icity.ly发布内容时上传图片的函数
+def upload_icity_image(driver):
     current_date = datetime.now().strftime("%m%d")
     file_name = f"{current_date}.jpg"
     file_path = os.path.join("C:\\Users\\jayden\\Desktop\\创作空间\\cover_picture", file_name)
 
-    # 检查文件是否存在
     if os.path.exists(file_path):
-        # 显式等待文件输入框出现
         file_input = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'input.el-upload__input[type="file"]'))
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'input.photo-file'))
         )
-        # 上传图片
         file_input.send_keys(file_path)
-        # 显式等待元素出现在 DOM 树中，最多等待 10 秒
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located(
-                (By.XPATH, '//img[@class="preview" and contains(@src, "i-blog.csdnimg.cn")]'))
+
+        # 等待图片上传完毕
+        # 定位 class="photos-queue" 元素
+        photos_queue_element = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "photos-queue"))
         )
-        logging.info(f"成功上传图片: {file_path}")
+        # 在 photos_queue_element 下查找 class="photo-one" 元素
+        photo_one_elements = photos_queue_element.find_elements(By.CLASS_NAME, "photo-one")
+        # 判断是否存在 class="photo-one" 元素
+        if len(photo_one_elements) > 0:
+            logging.info(f"成功上传图片: {file_path}")
+        else:
+            logging.error("封面图上传失败")
+            raise FileNotFoundError(f"封面图上传失败")
     else:
         logging.error(f"文件 {file_path} 不存在，请检查路径。")
         raise FileNotFoundError(f"文件 {file_path} 不存在，请检查路径。")
 
 
 # 发布文章函数
-def publish_article(driver, title, content):
-    # 打开创作中心
-    creator_center_url = 'https://mp.csdn.net/'
-    driver.get(creator_center_url)
+def publish_icity_post(driver, title, content):
+    set_icity_title(driver, title)
+    time.sleep(1)
+    set_icity_content(driver, content)
+    time.sleep(1)
+    upload_icity_image(driver)
+    time.sleep(1)
 
-    # 显式等待发布按钮可点击
     publish_btn = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//a[@class="content" and contains(text(), "发布")]'))
-    )
-    js_click_and_wait(driver, publish_btn)
-
-    set_article_title(driver, title)
-    time.sleep(1)
-    set_article_content(driver, content)
-    time.sleep(1)
-    select_tags(driver)
-    upload_cover_image(driver)
-    time.sleep(1)
-
-    # 显式等待发布按钮可点击
-    publish_btn = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, '//button[contains(@class, "el-button") and span[text()=" 发布博客"]]'))
+        EC.element_to_be_clickable((By.CSS_SELECTOR, 'a.btn.btn-primary.fr.submit'))
     )
     js_click_and_wait(driver, publish_btn)
     time.sleep(3)
+    logging.info("已点击发布按钮，等待发布结果")
 
-    # 显式等待包含“发布成功”的元素出现，最长等待 10 秒
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, '//div[@class="content-title" and contains(text(), "发布成功")]'))
+    # 判断发布成功
+    # 显式等待所有 <a> 标签元素加载完成，最长等待 10 秒
+    all_a_elements = WebDriverWait(driver, 10).until(
+        EC.presence_of_all_elements_located((By.TAG_NAME, "a"))
     )
-    logging.info("文章发布成功！")
+    found = False
+    for a_element in all_a_elements:
+        if a_element.text == title:
+            found = True
+            break
+
+    if found:
+        logging.info("文章发布成功！")
+    else:
+        logging.error(f"文章发布失败，未找到标题为 {title} 的文章")
+        raise FileNotFoundError(f"文章发布失败")
 
 
 def read_article_from_file():
@@ -273,21 +245,20 @@ def read_article_from_file():
 
     # 遍历文件的每一行
     for line in lines:
-        line = line.strip()  # 去除行首尾的空白字符
+        line = line.strip()
         if line == "[标题]":
-            continue  # 跳过标题标记行
+            continue
         elif line == "[内容]":
-            is_content = True  # 开始读取内容
-            continue  # 跳过内容标记行
+            is_content = True
+            continue
         if is_content:
-            article_content += line + "\n"  # 拼接内容行
+            article_content += line + "\n"
         else:
-            article_title = line  # 记录标题
+            article_title = line
 
     # 去除内容末尾多余的换行符
     article_content = article_content.rstrip()
 
-    logging.info(f"从文件 {file_path} 中读取文章标题和内容成功")
     return article_title, article_content
 
 
@@ -314,8 +285,8 @@ def main():
     # 读取文章
     article_title, article_content = read_article_from_file()
 
-    # 发布文章
-    publish_article(driver, article_title, article_content)
+    publish_icity_post(driver, article_title, article_content)
+
 
     # 关闭浏览器
     driver.quit()
