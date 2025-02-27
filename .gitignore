@@ -2,3 +2,4 @@
 /chromedriver-win64/*
 *.json
 *.ini
+*.log
