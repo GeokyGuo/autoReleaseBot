@@ -5,7 +5,10 @@ import time
 from datetime import datetime
 import logging
 from util.log_util import setup_logger
-
+from util.auth import BaseLoginHandler
+from services.publisher import ArticlePublisher
+from util.storage import StorageUtil
+from browser.core import SmartWaiter
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -225,35 +228,71 @@ def read_article_from_file():
 
     return article_title, article_content
 
-def main():
-    # 设置 Chrome 浏览器选项
-    chrome_options = Options()
-    # 可以根据需要设置为无头模式，即不显示浏览器窗口
-    # chrome_options.add_argument('--headless')
+class JianshuLoginHandler(BaseLoginHandler):
+    def __init__(self, driver):
+        super().__init__(driver, 'jianshu')
+        self.login_url = 'https://www.jianshu.com/sign_in'
 
-    # 配置 ChromeDriver 路径
+    def get_login_elements(self):
+        return {
+            'username': (By.XPATH, '//input[@placeholder="手机号或邮箱"]'),
+            'password': (By.XPATH, '//input[@placeholder="密码"]'),
+            'submit': (By.CSS_SELECTOR, 'button[id="sign-in-form-submit-btn"]')
+        }
+
+    def verify_login_state(self):
+        try:
+            return self.driver.find_element(By.CSS_SELECTOR, 'div.user').is_displayed()
+        except:
+            return False
+
+    def manual_login(self):
+        elements = self.get_login_elements()
+        creds = self.load_config()
+        
+        waiter = SmartWaiter(self.driver)
+        username = waiter.wait_for_element(elements['username'])
+        password = waiter.wait_for_element(elements['password'])
+        
+        username.send_keys(creds['username'])
+        password.send_keys(creds['password'])
+        
+        submit = waiter.wait_for_element(elements['submit'])
+        waiter.safe_click(submit)
+        return self.verify_login_state()
+
+class JianshuPublisher(ArticlePublisher):
+    def get_title_locator(self):
+        return (By.XPATH, '//input[contains(@value, "月")]')
+
+    def get_content_locator(self):
+        return (By.ID, 'arthur-editor')
+
+    def get_publish_btn_locator(self):
+        return (By.XPATH, '//a[@data-action="publicize"]')
+
+    def verify_publish_success(self):
+        return self.safe_wait((By.XPATH, '//a[contains(text(), "发布成功")]'))
+
+def main():
+    chrome_options = Options()
     service = Service("../chromedriver-win64/chromedriver.exe")
     driver = webdriver.Chrome(service=service, options=chrome_options)
 
-    # 检查是否存在 cookie 文件
-    if cookie_file_exists():
-        if not cookies_login(driver):
-            manual_login(driver)
-    else:
-        logging.info("没有有效的保存的 Cookies，进行手动登录。")
-        manual_login(driver)
+    login_handler = JianshuLoginHandler(driver)
+    if not login_handler.execute_login_flow():
+        logging.error("登录失败")
+        return
+
+    publisher = JianshuPublisher(driver)
+    title, content = StorageUtil.parse_article_content(
+        StorageUtil.generate_file_path("C:\\Users\\jayden\\Desktop\\创作空间")
+    )
+    publisher.publish_article(title, content)
 
     time.sleep(5)
-
-    # 读取文章
-    article_title, article_content = read_article_from_file()
-
-    publish_jianshu_post(driver, article_title, article_content)
-
-    # 关闭浏览器
     driver.quit()
     logging.info("浏览器已关闭")
-
 
 if __name__ == "__main__":
     main()
